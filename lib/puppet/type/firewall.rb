@@ -128,6 +128,10 @@ Puppet::Type.newtype(:firewall) do
       @resource.string_to_port(value)
     end
 
+    def is_to_s(value)
+      should_to_s(value)
+    end
+
     def should_to_s(value)
       value = [value] unless value.is_a?(Array)
       value.join(',')
@@ -152,6 +156,10 @@ Puppet::Type.newtype(:firewall) do
 
     munge do |value|
       @resource.string_to_port(value)
+    end
+
+    def is_to_s(value)
+      should_to_s(value)
     end
 
     def should_to_s(value)
@@ -180,6 +188,10 @@ Puppet::Type.newtype(:firewall) do
       @resource.string_to_port(value)
     end
 
+    def is_to_s(value)
+      should_to_s(value)
+    end
+
     def should_to_s(value)
       value = [value] unless value.is_a?(Array)
       value.join(',')
@@ -192,7 +204,7 @@ Puppet::Type.newtype(:firewall) do
       *tcp*.
     EOS
 
-    newvalues(:tcp, :udp, :icmp, :"ipv6-icmp", :esp, :ah, :vrrp, :igmp, :ipencap, :all)
+    newvalues(:tcp, :udp, :icmp, :"ipv6-icmp", :esp, :ah, :vrrp, :igmp, :ipencap, :ospf, :all)
     defaultto "tcp"
   end
 
@@ -385,6 +397,10 @@ Puppet::Type.newtype(:firewall) do
     # keep it consistent with the sorted result from iptables-save.
     def should=(values)
       @should = super(values).sort
+    end
+
+    def is_to_s(value)
+      should_to_s(value)
     end
 
     def should_to_s(value)
