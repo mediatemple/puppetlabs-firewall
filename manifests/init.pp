@@ -106,10 +106,15 @@ class firewall {
         }
         ## Since this RedHat section makes assumptions about release version numbering
         ## It only makes sense for RHEL-alike OSes.
-        RedHat,CentOS,CloudLinux: {
+        RedHat,CentOS,CloudLinux,PSBM: {
           ## ip6tables in CentOS 5.x does not support comments
           ## The provider needs comments, so we play dumb on older versions.
           if $lsbmajdistrelease >= 6 {
+            $firewall_supports_ipv6 = true
+          }
+
+          ## PSBM does not have useful LSB facts.
+          if $operatingsystem == 'PSBM' {
             $firewall_supports_ipv6 = true
           }
 
