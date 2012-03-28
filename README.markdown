@@ -4,13 +4,20 @@
 
 ### Overview
 
-This type provides the capability to manage firewall rules within 
-puppet.
+This module provides the resource 'firewall' which provides the capability to
+manage firewall rules within puppet.
 
 Current support includes:
 
 * iptables
 * ip6tables
+
+With the resource 'firewallchain' we also provide a mechanism to manage chains
+for:
+
+* iptables
+* ip6tables
+* ebtables
 
 ### Disclaimer
 
@@ -67,16 +74,85 @@ need to run Puppet on the master first:
 You may also need to restart Apache, although this shouldn't always be the
 case.
 
-Add the following to your site.pp to make sure class firewall can
-persist iptables rules across reboots:
+### Recommended Setup
+
+At the moment you need to provide some setup outside of what we provide in the 
+module to support proper ordering, purging and firewall peristence.
+
+So It is recommended that you provide the following in top scope somewhere
+(such as your site.pp):
 
     Firewall {
         notify  => Exec['firewall-persist'],
     }
 
-Load the firewall class that provides these helper methods:
+    # These defaults ensure that the persistence command is executed after 
+    # every change to the firewall, and that pre & post classes are run in the
+    # right order to avoid potentially locking you out of your box during the
+    # first puppet run.
+    Firewall {
+      notify  => Exec['persist-firewall'],
+      before  => Class['my_fw::post'],
+      require => Class['my_fw::pre'],
+    }
+
+    Firewallchain {
+      notify  => Exec['persist-firewall'],
+    }
+    
+    # Purge unmanaged firewall resources
+    #
+    # This will clear any existing rules, and make sure that only rules
+    # defined in puppet exist on the machine
+    resources { "firewall":
+      purge => true
+    }
+
+Additionally, you will need to load the firewall class that provides
+Exec[[persist-firewall']:
 
     class { 'firewall': }
+
+In this case, it uses classes called 'my_fw::pre' & 'my_fw::post' to define
+default pre and post rules. These rules are required to run in catalog order
+to avoid locking yourself out of your own boxes when Puppet runs, as
+the firewall class applies rules as it processes the catalog.
+
+An example of the pre class would be:
+
+    # This would be located in my_fw/manifests/pre.pp
+    class my_fw::pre {
+      Firewall {
+        require => undef,
+      }
+    
+      # Default firewall rules
+      firewall { '000 accept all icmp':
+        proto   => 'icmp',
+        action  => 'accept',
+      }->
+      firewall { '001 accept all to lo interface':
+        proto   => 'all',
+        iniface => 'lo',
+        action  => 'accept',
+      }->
+      firewall { '002 accept related established rules':
+        proto   => 'all',
+        state   => ['RELATED', 'ESTABLISHED'],
+        action  => 'accept',
+      }
+    }
+
+And an example of a post class:
+
+    # This would be located in my_fw/manifests/post.pp:
+    class my_fw::post {
+      firewall { '999 drop all':
+        proto   => 'all',
+        action  => 'drop',
+        before  => undef,
+      }
+    }
 
 ### Examples
 
@@ -104,23 +180,23 @@ Source NAT example (perfect for a virtualization host):
       table  => 'nat',
     }
 
-If you wish to ensure any reject rules are executed last, try using stages.
-The following example shows the creation of a class which is where your
-last rules should run, this however should belong in a puppet module.
+Creating a new rule that forwards to a chain, then adding a rule to this chain:
 
-    class my_fw::drop {
-      iptables { "999 drop all":
-        action => "drop"
-      }
+    firewall { '100 forward to MY_CHAIN':
+      chain   => 'INPUT',
+      jump    => 'MY_CHAIN',
+    }
+    # The namevar here is in the format chain_name:table:protocol
+    firewallchain { 'MY_CHAIN:filter:IPv4':
+      ensure  => present,
+    }
+    firewall { '100 my rule':
+      chain   => 'MY_CHAIN',
+      action  => 'accept',
+      proto   => 'tcp',
+      dport   => 5000,
     }
 
-    stage { pre: before => Stage[main] }
-    stage { post: require => Stage[main] }
-
-    class { "my_fw::drop": stage => "post" }
-
-By placing the 'my_fw::drop' class in the post stage it will always be inserted
-last thereby avoiding locking you out before the accept rules are inserted.
 
 ### Further documentation
 
@@ -154,6 +230,7 @@ Currently we support:
 
 * iptables
 * ip6tables
+* ebtables (chains only)
 
 But plans are to support lots of other firewall implementations:
 

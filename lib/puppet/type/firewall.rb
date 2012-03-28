@@ -15,6 +15,10 @@ Puppet::Type.newtype(:firewall) do
   @doc = <<-EOS
     This type provides the capability to manage firewall rules within
     puppet.
+
+    **Autorequires:** If Puppet is managing the iptables or ip6tables chains
+    specified in the `chain` or `jump` parameters, the firewall resource
+    will autorequire those firewallchain resources.
   EOS
 
   feature :rate_limiting, "Rate limiting features."
@@ -291,14 +295,14 @@ Puppet::Type.newtype(:firewall) do
     desc <<-EOS
       Input interface to filter on.
     EOS
-    newvalues(/^[a-zA-Z0-9\-_]+$/)
+    newvalues(/^[a-zA-Z0-9\-\._]+$/)
   end
 
   newproperty(:outiface, :required_features => :interface_match) do
     desc <<-EOS
       Output interface to filter on.
     EOS
-    newvalues(/^[a-zA-Z0-9\-_]+$/)
+    newvalues(/^[a-zA-Z0-9\-\._]+$/)
   end
 
   # NAT specific properties
@@ -462,6 +466,24 @@ Puppet::Type.newtype(:firewall) do
     EOS
   end
 
+  autorequire(:firewallchain) do
+    case value(:provider)
+    when :iptables
+      protocol = "IPv4"
+    when :ip6tables
+      protocol = "IPv6"
+    else
+      return
+    end
+
+    reqs = []
+    [value(:chain), value(:jump)].each do |chain|
+      reqs << "#{chain}:#{value(:table)}:#{protocol}" unless chain.nil?
+    end
+
+    reqs
+  end
+
   validate do
     debug("[validate]")
 
@@ -567,6 +589,12 @@ Puppet::Type.newtype(:firewall) do
     if value(:jump).to_s == "MASQUERADE"
       unless value(:table).to_s =~ /nat/
         self.fail "Parameter jump => MASQUERADE only applies to table => nat"
+      end
+    end
+
+    if value(:log_prefix) || value(:log_level)
+      unless value(:jump).to_s == "LOG"
+        self.fail "Parameter log_prefix and log_level require jump => LOG"
       end
     end
 
