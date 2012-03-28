@@ -29,7 +29,7 @@ class firewall {
   if versioncmp ( $::facterversion, '1.6.2' ) < 0 {
       fail("Facter version >= 1.6.2 required for class firewall")
   }
-  
+
   case $kernel {
     'Linux': {
 
