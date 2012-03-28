@@ -26,10 +26,14 @@ class firewall {
     path => [ '/bin', '/sbin' ],
   }
 
+  if versioncmp ( $::facterversion, '1.6.2' ) < 0 {
+      fail("Facter version >= 1.6.2 required for class firewall")
+  }
+  
   case $kernel {
     'Linux': {
 
-      case $operatingsystem {
+      case $::osfamily {
         Debian: {
           ## The iptables in Lenny definitely works.
           ## Older versions not tested.
@@ -106,15 +110,11 @@ class firewall {
         }
         ## Since this RedHat section makes assumptions about release version numbering
         ## It only makes sense for RHEL-alike OSes.
-        RedHat,CentOS,CloudLinux,PSBM: {
+        RedHat: {
           ## ip6tables in CentOS 5.x does not support comments
           ## The provider needs comments, so we play dumb on older versions.
-          if $lsbmajdistrelease >= 6 {
-            $firewall_supports_ipv6 = true
-          }
-
-          ## PSBM does not have useful LSB facts.
-          if $operatingsystem == 'PSBM' {
+          ## Also, PSBM does not have useful LSB facts.
+          if $lsbmajdistrelease >= 6 or $operatingsystem == 'PSBM'{
             $firewall_supports_ipv6 = true
           }
 
