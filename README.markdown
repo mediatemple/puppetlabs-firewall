@@ -159,7 +159,7 @@ And an example of a post class:
 Basic accept ICMP request example:
 
     firewall { "000 accept all icmp requests":
-      proto => "icmp",
+      proto  => "icmp",
       action => "accept",
     }
 
@@ -172,12 +172,12 @@ Drop all:
 Source NAT example (perfect for a virtualization host):
 
     firewall { '100 snat for network foo2':
-      chain  => 'POSTROUTING',
-      jump   => 'MASQUERADE',
-      proto  => 'all',
+      chain    => 'POSTROUTING',
+      jump     => 'MASQUERADE',
+      proto    => 'all',
       outiface => "eth0",
-      source => ['10.1.2.0/24'],
-      table  => 'nat',
+      source   => ['10.1.2.0/24'],
+      table    => 'nat',
     }
 
 Creating a new rule that forwards to a chain, then adding a rule to this chain:
@@ -219,6 +219,17 @@ Or:
 Bugs can be reported in the Puppetlabs Redmine project:
 
     <http://projects.puppetlabs.com/projects/modules/>
+
+Please note, we only aim support for the following distributions and versions:
+
+* Redhat 5.8 or greater
+* Debian 6.0 or greater
+* Ubuntu 11.04 or greater
+
+If you want a new distribution supported feel free to raise a ticket and we'll
+consider it. If you want an older revision supported we'll also consider it,
+but don't get insulted if we reject it. Specifically, we will not consider
+Redhat 4.x support - its just too old.
 
 ## Developer Guide
 

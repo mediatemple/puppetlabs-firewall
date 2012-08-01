@@ -18,11 +18,20 @@ Puppet::Type.type(:firewall).provide :iptables, :parent => Puppet::Provider::Fir
   has_feature :log_level
   has_feature :log_prefix
   has_feature :mark
+  has_feature :tcp_flags
+  has_feature :pkttype
 
   commands :iptables => '/sbin/iptables'
   commands :iptables_save => '/sbin/iptables-save'
 
   defaultfor :kernel => :linux
+
+  iptables_version = Facter.fact('iptables_version').value
+  if (iptables_version and Puppet::Util::Package.versioncmp(iptables_version, '1.4.1') < 0)
+    mark_flag = '--set-mark'
+  else
+    mark_flag = '--set-xmark'
+  end
 
   @resource_map = {
     :burst => "--limit-burst",
@@ -40,15 +49,17 @@ Puppet::Type.type(:firewall).provide :iptables, :parent => Puppet::Provider::Fir
     :port => '-m multiport --ports',
     :proto => "-p",
     :reject => "--reject-with",
+    :set_mark => mark_flag,
     :source => "-s",
-    :state => "-m state --state",
     :sport => "-m multiport --sports",
+    :state => "-m state --state",
     :table => "-t",
+    :tcp_flags => "-m tcp --tcp-flags",
     :todest => "--to-destination",
     :toports => "--to-ports",
     :tosource => "--to-source",
     :uid => "-m owner --uid-owner",
-    :set_mark => "--set-mark",
+    :pkttype => "-m pkttype --pkt-type"
   }
 
   # This is the order of resources as they appear in iptables-save output,
@@ -56,7 +67,7 @@ Puppet::Type.type(:firewall).provide :iptables, :parent => Puppet::Provider::Fir
   # changes between puppet runs, the changed rules will be re-applied again.
   # This order can be determined by going through iptables source code or just tweaking and trying manually
   @resource_list = [:table, :source, :destination, :iniface, :outiface,
-    :proto, :gid, :uid, :sport, :dport, :port, :name, :state, :icmp, :limit, :burst,
+    :proto, :tcp_flags, :gid, :uid, :sport, :dport, :port, :pkttype, :name, :state, :icmp, :limit, :burst,
     :jump, :todest, :tosource, :toports, :log_level, :log_prefix, :reject, :set_mark]
 
   def insert
@@ -94,11 +105,9 @@ Puppet::Type.type(:firewall).provide :iptables, :parent => Puppet::Provider::Fir
     rules = []
     counter = 1
 
-    self.iptables_init
-    
     # String#lines would be nice, but we need to support Ruby 1.8.5
     iptables_save.split("\n").each do |line|
-      unless line =~ /^(\#\s+|\:\S+|COMMIT|FATAL)/
+      unless line =~ /^\#\s+|^\:\S+|^COMMIT|^FATAL/
         if line =~ /^\*/
           table = line.sub(/\*/, "")
         else
@@ -126,6 +135,10 @@ Puppet::Type.type(:firewall).provide :iptables, :parent => Puppet::Provider::Fir
     keys = []
     values = line.dup
 
+    # --tcp-flags takes two values; we cheat by adding " around it
+    # so it behaves like --comment
+    values = values.sub(/--tcp-flags (\S*) (\S*)/, '--tcp-flags "\1 \2"')
+
     @resource_list.reverse.each do |k|
       if values.slice!(/\s#{@resource_map[k]}/)
         keys << k
@@ -137,6 +150,11 @@ Puppet::Type.type(:firewall).provide :iptables, :parent => Puppet::Provider::Fir
     keys << :chain
 
     keys.zip(values.scan(/"[^"]*"|\S+/).reverse) { |f, v| hash[f] = v.gsub(/"/, '') }
+
+    # Normalise all rules to CIDR notation.
+    [:source, :destination].each do |prop|
+      hash[prop] = Puppet::Util::IPCidr.new(hash[prop]).cidr unless hash[prop].nil?
+    end
 
     [:dport, :sport, :port, :state].each do |prop|
       hash[prop] = hash[prop].split(',') if ! hash[prop].nil?
@@ -258,7 +276,14 @@ Puppet::Type.type(:firewall).provide :iptables, :parent => Puppet::Provider::Fir
         end
       end
 
-      if resource_value.is_a?(Array)
+      # our tcp_flags takes a single string with comma lists separated
+      # by space
+      # --tcp-flags expects two arguments
+      if res == :tcp_flags
+        one, two = resource_value.split(' ')
+        args << one
+        args << two
+      elsif resource_value.is_a?(Array)
         args << resource_value.join(',')
       else
         args << resource_value
@@ -272,9 +297,11 @@ Puppet::Type.type(:firewall).provide :iptables, :parent => Puppet::Provider::Fir
     debug("[insert_order]")
     rules = []
 
-    # Find list of current rules based on chain
+    # Find list of current rules based on chain and table
     self.class.instances.each do |rule|
-      rules << rule.name if rule.chain == resource[:chain].to_s
+      if rule.chain == resource[:chain].to_s and rule.table == resource[:table].to_s
+        rules << rule.name
+      end
     end
 
     # No rules at all? Just bail now.
