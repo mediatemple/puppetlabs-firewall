@@ -105,6 +105,8 @@ Puppet::Type.type(:firewall).provide :iptables, :parent => Puppet::Provider::Fir
     rules = []
     counter = 1
 
+    self.iptables_init
+
     # String#lines would be nice, but we need to support Ruby 1.8.5
     iptables_save.split("\n").each do |line|
       unless line =~ /^\#\s+|^\:\S+|^COMMIT|^FATAL/
