@@ -79,7 +79,7 @@ module Puppet::Util::Firewall
         return Socket.getservbyname(value).to_s
       end
     else
-      Socket.getservbyname(value)
+      Socket.getservbyname(value.to_s)
     end
   end
 
